@@ -8,11 +8,13 @@
   const BLUE_LEFT = '#1a4d8c';   // Darkest – left face (shadowed)
   const BLUE_RIGHT = '#2d7dd2';  // Lightest – right face (lit)
   const BLUE_TOP = '#2563b8';    // Mid – top face
+  const BLUE_BACK = '#1a3a5c';  // Dark blue – back faces (bottom, back-left, back-right)
 
   let mouseX = null;
   let mouseY = null;
   let currentSpread = 0;
   const SMOOTH_SPEED = 0.06;  // Lower = slower (0.04–0.1 typical)
+  const BACK_SPREAD_FACTOR = 1.5;  // Back faces spread less than front (0–1)
 
   canvas.addEventListener('mousemove', function (e) {
     const rect = canvas.getBoundingClientRect();
@@ -53,19 +55,70 @@
     return current + delta * speed * (0.85 + easeInOut * 0.15);  // Subtle ease (was 0.5–1.5, now 0.85–1)
   }
 
-  function drawIsometricCube(cx, cy, size, spread) {
+  /**
+   * Computes shared isometric cube geometry (reused by back and front face drawing).
+   * @returns {Object} geom - cx, cy, s, w, h, spreadAmount, and spread deltas for each face
+   */
+  function computeCubeGeometry(cx, cy, size, spread) {
     const s = size;
-    const w = s * ISO_X;  // Horizontal extent per unit (cos 30°)
-    const h = s * ISO_Y;  // Vertical extent per unit (sin 30°)
+    const w = s * ISO_X;
+    const h = s * ISO_Y;
     const spreadAmount = spread || 0;
-    // Isometric spread: left face along (-ISO_X, +ISO_Y), right face along (+ISO_X, +ISO_Y)
-    const leftDx = -spreadAmount * ISO_X;
-    const leftDy = spreadAmount * ISO_Y;
-    const rightDx = spreadAmount * ISO_X;
-    const rightDy = spreadAmount * ISO_Y;
+    const backSpreadAmount = spreadAmount * BACK_SPREAD_FACTOR;
+    return {
+      cx, cy, s, w, h, spreadAmount,
+      leftDx: -spreadAmount * ISO_X,
+      leftDy: spreadAmount * ISO_Y,
+      rightDx: spreadAmount * ISO_X,
+      rightDy: spreadAmount * ISO_Y,
+      backSpreadAmount,
+      backLeftDx: -backSpreadAmount * ISO_X,
+      backLeftDy: backSpreadAmount * ISO_Y,
+      backRightDx: backSpreadAmount * ISO_X,
+      backRightDy: backSpreadAmount * ISO_Y
+    };
+  }
 
-    // Draw order: back faces first so top overlaps correctly
-    // Left face: parallelogram (darker); spreads along isometric left axis
+  /** Draws back faces (bottom, back-left, back-right) – rendered behind the circle. */
+  function drawBackFaces(geom) {
+    const { cx, cy, w, h, s, backSpreadAmount, backLeftDx, backLeftDy, backRightDx, backRightDy } = geom;
+
+    // Bottom face (uses reduced back spread)
+    ctx.beginPath();
+    ctx.moveTo(cx, cy + h + backSpreadAmount);
+    ctx.lineTo(cx + w, cy + 2 * h + backSpreadAmount);
+    ctx.lineTo(cx, cy + 3 * h + backSpreadAmount);
+    ctx.lineTo(cx - w, cy + 2 * h + backSpreadAmount);
+    ctx.closePath();
+    ctx.fillStyle = BLUE_BACK;
+    ctx.fill();
+
+    // Back-left face
+    ctx.beginPath();
+    ctx.moveTo(cx - w + backLeftDx, cy - backSpreadAmount + backLeftDy);
+    ctx.lineTo(cx + backLeftDx, cy - h - backSpreadAmount + backLeftDy);
+    ctx.lineTo(cx + backLeftDx, cy - h - backSpreadAmount + s + backLeftDy);
+    ctx.lineTo(cx - w + backLeftDx, cy - backSpreadAmount + s + backLeftDy);
+    ctx.closePath();
+    ctx.fillStyle = BLUE_BACK;
+    ctx.fill();
+
+    // Back-right face
+    ctx.beginPath();
+    ctx.moveTo(cx + w + backRightDx, cy - backSpreadAmount + backRightDy);
+    ctx.lineTo(cx + backRightDx, cy - h - backSpreadAmount + backRightDy);
+    ctx.lineTo(cx + backRightDx, cy - h - backSpreadAmount + s + backRightDy);
+    ctx.lineTo(cx + w + backRightDx, cy - backSpreadAmount + s + backRightDy);
+    ctx.closePath();
+    ctx.fillStyle = BLUE_BACK;
+    ctx.fill();
+  }
+
+  /** Draws front faces (left, right, top) – rendered in front of the circle. */
+  function drawFrontFaces(geom) {
+    const { cx, cy, w, h, s, spreadAmount, leftDx, leftDy, rightDx, rightDy } = geom;
+
+    // Left face
     ctx.beginPath();
     ctx.moveTo(cx - w + leftDx, cy + leftDy);
     ctx.lineTo(cx + leftDx, cy + h + leftDy);
@@ -75,7 +128,7 @@
     ctx.fillStyle = BLUE_LEFT;
     ctx.fill();
 
-    // Right face: parallelogram (lighter); spreads along isometric right axis
+    // Right face
     ctx.beginPath();
     ctx.moveTo(cx + w + rightDx, cy + rightDy);
     ctx.lineTo(cx + rightDx, cy + h + rightDy);
@@ -85,12 +138,12 @@
     ctx.fillStyle = BLUE_RIGHT;
     ctx.fill();
 
-    // Top face: diamond; pushed up when spread > 0
+    // Top face
     ctx.beginPath();
-    ctx.moveTo(cx, cy - h - spreadAmount);       // top
-    ctx.lineTo(cx + w, cy - spreadAmount);        // right
-    ctx.lineTo(cx, cy + h - spreadAmount);        // bottom
-    ctx.lineTo(cx - w, cy - spreadAmount);       // left
+    ctx.moveTo(cx, cy - h - spreadAmount);
+    ctx.lineTo(cx + w, cy - spreadAmount);
+    ctx.lineTo(cx, cy + h - spreadAmount);
+    ctx.lineTo(cx - w, cy - spreadAmount);
     ctx.closePath();
     ctx.fillStyle = BLUE_TOP;
     ctx.fill();
@@ -106,27 +159,34 @@
     ctx.save();
     ctx.translate(W / 2, H / 2);
 
-    // Circle behind the cube
+    var cubeSize = Math.min(W, H) * 0.3;
+    var targetSpread = 0;
+    if (mouseX !== null && mouseY !== null) {
+      var dist = Math.sqrt(mouseX * mouseX + mouseY * mouseY);
+      var innerRadius = Math.min(W, H) * 0.12;
+      var outerRadius = Math.min(W, H) * 0.28;
+      var t = dist <= innerRadius ? 1 : dist >= outerRadius ? 0 : (outerRadius - dist) / (outerRadius - innerRadius);
+      targetSpread = t * cubeSize * 0.4;
+    }
+    currentSpread = lerpEaseInOut(currentSpread, targetSpread, SMOOTH_SPEED, cubeSize * 0.5);
+
+    var geom = computeCubeGeometry(0, -cubeSize / 2, cubeSize, currentSpread);
+
+    // 1. Back faces (behind circle)
+    ctx.globalAlpha = 0.8;
+    drawBackFaces(geom);
+
+    // 2. Circle (in the middle, opaque)
+    ctx.globalAlpha = 1;
     var circleR = Math.min(W, H) * 0.18;
     ctx.beginPath();
     ctx.arc(0, 0, circleR, 0, Math.PI * 2);
     ctx.fillStyle = ORANGE;
     ctx.fill();
 
-    // Cube in front, semi-transparent (larger than circle)
+    // 3. Front faces (in front of circle)
     ctx.globalAlpha = 0.8;
-    var cubeSize = Math.min(W, H) * 0.3;
-    // Offset up so cube's geometric center aligns with origin
-    var targetSpread = 0;
-    if (mouseX !== null && mouseY !== null) {
-      var dist = Math.sqrt(mouseX * mouseX + mouseY * mouseY);
-      var innerRadius = Math.min(W, H) * 0.12;   // Max spread when within this
-      var outerRadius = Math.min(W, H) * 0.28;   // Zero spread when beyond this
-      var t = dist <= innerRadius ? 1 : dist >= outerRadius ? 0 : (outerRadius - dist) / (outerRadius - innerRadius);
-      targetSpread = t * cubeSize * 0.4;
-    }
-    currentSpread = lerpEaseInOut(currentSpread, targetSpread, SMOOTH_SPEED, cubeSize * 0.5);
-    drawIsometricCube(0, -cubeSize / 2, cubeSize, currentSpread);
+    drawFrontFaces(geom);
     ctx.globalAlpha = 1;
 
     ctx.restore();
