@@ -212,7 +212,7 @@
     var geom = computeCubeGeometry(0, -cubeSize / 2, cubeSize, currentSpread);
 
     // 1. Back faces (behind circle)
-    ctx.globalAlpha = 0.8;
+    ctx.globalAlpha = 0.9;
     drawBackFaces(geom);
 
     // 2. Circle (in the middle, opaque)
@@ -224,7 +224,7 @@
     ctx.fill();
 
     // 3. Front faces (in front of circle)
-    ctx.globalAlpha = 0.8;
+    ctx.globalAlpha = 0.9;
     drawFrontFaces(geom);
     ctx.globalAlpha = 1;
 
