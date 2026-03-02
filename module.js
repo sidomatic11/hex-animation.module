@@ -11,6 +11,8 @@
 
   let mouseX = null;
   let mouseY = null;
+  let currentSpread = 0;
+  const SMOOTH_SPEED = 0.06;  // Lower = slower (0.04–0.1 typical)
 
   canvas.addEventListener('mousemove', function (e) {
     const rect = canvas.getBoundingClientRect();
@@ -35,6 +37,21 @@
   // Isometric projection: 30° horizontal axes, Y-down screen coords
   const ISO_X = Math.cos(Math.PI / 6);  // cos(30°) ≈ 0.866
   const ISO_Y = Math.sin(Math.PI / 6);  // sin(30°) ≈ 0.5
+
+  /**
+   * Lerps `current` toward `target` with ease-in-out (slow start & end, faster in middle).
+   * @param {number} current - Current value
+   * @param {number} target - Target value
+   * @param {number} speed - Base lerp speed (0.04–0.1 typical)
+   * @param {number} [maxDelta] - Optional scale for normalizing distance; uses |target| if omitted
+   */
+  function lerpEaseInOut(current, target, speed, maxDelta) {
+    var delta = target - current;
+    var range = maxDelta != null ? maxDelta : Math.max(1, Math.abs(target));
+    var normalizedDist = Math.min(1, Math.abs(delta) / range);
+    var easeInOut = normalizedDist * (1 - normalizedDist) * 4;  // 0 at ends, 1 at middle
+    return current + delta * speed * (0.85 + easeInOut * 0.15);  // Subtle ease (was 0.5–1.5, now 0.85–1)
+  }
 
   function drawIsometricCube(cx, cy, size, spread) {
     const s = size;
@@ -95,15 +112,16 @@
     ctx.globalAlpha = 0.8;
     var cubeSize = Math.min(W, H) * 0.3;
     // Offset up so cube's geometric center aligns with origin
-    var spread = 0;
+    var targetSpread = 0;
     if (mouseX !== null && mouseY !== null) {
       var dist = Math.sqrt(mouseX * mouseX + mouseY * mouseY);
       var innerRadius = Math.min(W, H) * 0.12;   // Max spread when within this
-      var outerRadius = Math.min(W, H) * 0.28;    // Zero spread when beyond this
+      var outerRadius = Math.min(W, H) * 0.28;   // Zero spread when beyond this
       var t = dist <= innerRadius ? 1 : dist >= outerRadius ? 0 : (outerRadius - dist) / (outerRadius - innerRadius);
-      spread = t * cubeSize * 0.4;
+      targetSpread = t * cubeSize * 0.4;
     }
-    drawIsometricCube(0, -cubeSize / 2, cubeSize, spread);
+    currentSpread = lerpEaseInOut(currentSpread, targetSpread, SMOOTH_SPEED, cubeSize * 0.5);
+    drawIsometricCube(0, -cubeSize / 2, cubeSize, currentSpread);
     ctx.globalAlpha = 1;
 
     ctx.restore();
