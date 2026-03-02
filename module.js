@@ -23,6 +23,17 @@
   const SMOOTH_SPEED = 0.06;  // Lower = slower (0.04–0.1 typical)
   const BACK_SPREAD_FACTOR = 1.5;  // Back faces spread less than front (0–1)
 
+  // Glass-lava HUD animation state (reference design uses bgRadius 280)
+  // Perf: blur removed (ctx.filter is expensive); 3 rings; 3 blobs
+  let time = 0;
+  let rings = [];
+  let blobs = [];
+  const RING_CONFIGS = [
+    { radius: 60, baseSpeed: 0.003, thickness: 90, dash: [180, 90], color: 'rgba(255, 255, 255, 0.14)' },
+    { radius: 105, baseSpeed: -0.002, thickness: 120, dash: [300, 120], color: 'rgba(255, 236, 179, 0.1)' },
+    { radius: 205, baseSpeed: -0.0025, thickness: 120, dash: [550, 180], color: 'rgba(255, 255, 255, 0.07)' }
+  ];
+
   canvas.addEventListener('mousemove', function (e) {
     const rect = canvas.getBoundingClientRect();
     mouseX = (e.clientX - rect.left) - rect.width / 2;
@@ -107,6 +118,90 @@
     };
   }
 
+  /**
+   * Ring for glass-lava HUD: dashed concentric circle with blur and glow.
+   * Values are scaled at draw time to match circle radius.
+   */
+  function Ring(config) {
+    this.config = config;
+    this.offset = Math.random() * 1000;
+  }
+  Ring.prototype.update = function () {
+    const speedVar = Math.sin(time * 0.3) * 0.0005;
+    this.offset += (this.config.baseSpeed + speedVar) * 60;
+  };
+  Ring.prototype.draw = function (scale) {
+    const c = this.config;
+    const r = c.radius * scale;
+    const t = c.thickness * scale;
+    const d = [c.dash[0] * scale, c.dash[1] * scale];
+    ctx.save();
+    ctx.strokeStyle = c.color;
+    ctx.lineWidth = t;
+    ctx.setLineDash(d);
+    ctx.lineDashOffset = -this.offset;
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.beginPath();
+    ctx.arc(0, 0, r, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  };
+
+  function createBlobs() {
+    blobs = [];
+    for (let i = 0; i < 3; i++) {
+      blobs.push({
+        size: 220 + Math.random() * 200,
+        angle: Math.random() * Math.PI * 2,
+        dist: 40 + Math.random() * 100,
+        speed: 0.003 + Math.random() * 0.005,
+        phase: Math.random() * Math.PI * 2
+      });
+    }
+  }
+
+  /**
+   * Draws the lava-lamp gradient circle with animated blobs.
+   * Clips to bgRadius; center is at (0,0) after translate.
+   */
+  function drawLavaLamp(bgRadius) {
+    const scale = bgRadius / 280;
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(0, 0, bgRadius, 0, Math.PI * 2);
+    ctx.clip();
+
+    const bgGrad = ctx.createRadialGradient(0, 0, 0, 0, 0, bgRadius);
+    bgGrad.addColorStop(0, '#FF8A4D');
+    bgGrad.addColorStop(0.8, '#FF7029');
+    bgGrad.addColorStop(1, '#A63F0F');
+    ctx.fillStyle = bgGrad;
+    ctx.fill();
+
+    blobs.forEach(function (blob) {
+      blob.angle += blob.speed;
+      const movement = Math.sin(time * 0.5 + blob.phase) * 40 * scale;
+      const bx = Math.cos(blob.angle) * (blob.dist * scale + movement);
+      const by = Math.sin(blob.angle * 0.7) * (blob.dist * scale + movement);
+      const size = blob.size * scale;
+      const grad = ctx.createRadialGradient(bx, by, 0, bx, by, size);
+      grad.addColorStop(0, 'rgba(255, 236, 179, 0.25)');
+      grad.addColorStop(0.7, 'rgba(255, 112, 41, 0)');
+      ctx.globalCompositeOperation = 'screen';
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(bx, by, size, 0, Math.PI * 2);
+      ctx.fill();
+    });
+
+    const innerShadow = ctx.createRadialGradient(0, 0, bgRadius * 0.85, 0, 0, bgRadius);
+    innerShadow.addColorStop(0, 'rgba(0,0,0,0)');
+    innerShadow.addColorStop(1, 'rgba(0,0,0,0.12)');
+    ctx.fillStyle = innerShadow;
+    ctx.fill();
+    ctx.restore();
+  }
+
   /** Draws back faces (bottom, back-left, back-right) – rendered behind the circle. */
   function drawBackFaces(geom) {
     const { cx, cy, w, h, s, backSpreadAmount, backLeftDx, backLeftDy, backRightDx, backRightDy } = geom;
@@ -189,6 +284,7 @@
   }
 
   function draw() {
+    time += 0.01;
     var W = cssWidth;
     var H = cssHeight;
 
@@ -215,13 +311,20 @@
     ctx.globalAlpha = 0.9;
     drawBackFaces(geom);
 
-    // 2. Circle (in the middle, opaque)
+    // 2. Circle: glass-lava HUD (lava lamp + animated rings)
     ctx.globalAlpha = 1;
     var circleR = Math.min(W, H) * 0.18;
-    ctx.beginPath();
-    ctx.arc(0, 0, circleR, 0, Math.PI * 2);
-    ctx.fillStyle = ORANGE;
-    ctx.fill();
+    if (rings.length === 0) {
+      rings = RING_CONFIGS.map(function (c) { return new Ring(c); });
+    }
+    if (blobs.length === 0) createBlobs();
+
+    var scale = circleR / 280;
+    drawLavaLamp(circleR);
+    rings.forEach(function (ring) {
+      ring.update();
+      ring.draw(scale);
+    });
 
     // 3. Front faces (in front of circle)
     ctx.globalAlpha = 0.9;
