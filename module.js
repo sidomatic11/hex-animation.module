@@ -10,6 +10,13 @@
   const BLUE_TOP = '#2563b8';    // Mid – top face
   const BLUE_BACK = '#1a3a5c';  // Dark blue – back faces (bottom, back-left, back-right)
 
+  // Face images (loaded async) – same folder as index.html
+  const FACE_IMAGES = { left: new Image(), right: new Image(), top: new Image(), back: new Image() };
+  FACE_IMAGES.left.src = 'side=left.svg';
+  FACE_IMAGES.right.src = 'side=right.svg';
+  FACE_IMAGES.top.src = 'side=top.svg';
+  FACE_IMAGES.back.src = 'side=back.svg';
+
   let mouseX = null;
   let mouseY = null;
   let currentSpread = 0;
@@ -18,20 +25,25 @@
 
   canvas.addEventListener('mousemove', function (e) {
     const rect = canvas.getBoundingClientRect();
-    const scaleX = canvas.width / rect.width;
-    const scaleY = canvas.height / rect.height;
-    mouseX = (e.clientX - rect.left) * scaleX - canvas.width / 2;
-    mouseY = (e.clientY - rect.top) * scaleY - canvas.height / 2;
+    mouseX = (e.clientX - rect.left) - rect.width / 2;
+    mouseY = (e.clientY - rect.top) - rect.height / 2;
   });
   canvas.addEventListener('mouseleave', function () {
     mouseX = null;
     mouseY = null;
   });
 
-  // Match canvas size to wrapper
+  // Match canvas size to wrapper; scale for high-DPI (Retina) to avoid pixelation
+  let cssWidth = 0, cssHeight = 0;
   function resize() {
-    canvas.width = canvas.parentElement.offsetWidth;
-    canvas.height = canvas.parentElement.offsetHeight;
+    const dpr = window.devicePixelRatio || 1;
+    cssWidth = canvas.parentElement.offsetWidth;
+    cssHeight = canvas.parentElement.offsetHeight;
+    canvas.width = cssWidth * dpr;
+    canvas.height = cssHeight * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
   }
   window.addEventListener('resize', resize);
   resize();
@@ -39,6 +51,22 @@
   // Isometric projection: 30° horizontal axes, Y-down screen coords
   const ISO_X = Math.cos(Math.PI / 6);  // cos(30°) ≈ 0.866
   const ISO_Y = Math.sin(Math.PI / 6);  // sin(30°) ≈ 0.5
+
+  /**
+   * Draws an image into a parallelogram with correct skew. Vertices: top-left, top-right, bottom-right, bottom-left.
+   * Composes transform with parent (keeps translate); maps unit square to parallelogram.
+   */
+  function drawImageInParallelogram(img, x0, y0, x1, y1, x2, y2, x3, y3) {
+    if (!img.complete || !img.naturalWidth) return;
+    ctx.save();
+    ctx.translate(x0, y0);
+    ctx.transform(x1 - x0, y1 - y0, x3 - x0, y3 - y0, 0, 0);
+    ctx.beginPath();
+    ctx.rect(0, 0, 1, 1);
+    ctx.clip();
+    ctx.drawImage(img, 0, 0, img.naturalWidth, img.naturalHeight, 0, 0, 1, 1);
+    ctx.restore();
+  }
 
   /**
    * Lerps `current` toward `target` with ease-in-out (slow start & end, faster in middle).
@@ -82,76 +110,87 @@
   /** Draws back faces (bottom, back-left, back-right) – rendered behind the circle. */
   function drawBackFaces(geom) {
     const { cx, cy, w, h, s, backSpreadAmount, backLeftDx, backLeftDy, backRightDx, backRightDy } = geom;
+    const backImg = FACE_IMAGES.back;
 
-    // Bottom face (uses reduced back spread)
-    ctx.beginPath();
-    ctx.moveTo(cx, cy + h + backSpreadAmount);
-    ctx.lineTo(cx + w, cy + 2 * h + backSpreadAmount);
-    ctx.lineTo(cx, cy + 3 * h + backSpreadAmount);
-    ctx.lineTo(cx - w, cy + 2 * h + backSpreadAmount);
-    ctx.closePath();
-    ctx.fillStyle = BLUE_BACK;
-    ctx.fill();
+    function drawBackFacePath(x0, y0, x1, y1, x2, y2, x3, y3) {
+      ctx.beginPath();
+      ctx.moveTo(x0, y0);
+      ctx.lineTo(x1, y1);
+      ctx.lineTo(x2, y2);
+      ctx.lineTo(x3, y3);
+      ctx.closePath();
+    }
 
-    // Back-left face
-    ctx.beginPath();
-    ctx.moveTo(cx - w + backLeftDx, cy - backSpreadAmount + backLeftDy);
-    ctx.lineTo(cx + backLeftDx, cy - h - backSpreadAmount + backLeftDy);
-    ctx.lineTo(cx + backLeftDx, cy - h - backSpreadAmount + s + backLeftDy);
-    ctx.lineTo(cx - w + backLeftDx, cy - backSpreadAmount + s + backLeftDy);
-    ctx.closePath();
-    ctx.fillStyle = BLUE_BACK;
-    ctx.fill();
+    if (backImg.complete && backImg.naturalWidth) {
+      // Bottom face – diamond: top, right, bottom, left (same order as original path)
+      drawImageInParallelogram(backImg,
+        cx, cy + h + backSpreadAmount,
+        cx + w, cy + 2 * h + backSpreadAmount,
+        cx, cy + 3 * h + backSpreadAmount,
+        cx - w, cy + 2 * h + backSpreadAmount);
 
-    // Back-right face
-    ctx.beginPath();
-    ctx.moveTo(cx + w + backRightDx, cy - backSpreadAmount + backRightDy);
-    ctx.lineTo(cx + backRightDx, cy - h - backSpreadAmount + backRightDy);
-    ctx.lineTo(cx + backRightDx, cy - h - backSpreadAmount + s + backRightDy);
-    ctx.lineTo(cx + w + backRightDx, cy - backSpreadAmount + s + backRightDy);
-    ctx.closePath();
-    ctx.fillStyle = BLUE_BACK;
-    ctx.fill();
+      // Back-left face
+      drawImageInParallelogram(backImg,
+        cx - w + backLeftDx, cy - backSpreadAmount + backLeftDy,
+        cx + backLeftDx, cy - h - backSpreadAmount + backLeftDy,
+        cx + backLeftDx, cy - h - backSpreadAmount + s + backLeftDy,
+        cx - w + backLeftDx, cy - backSpreadAmount + s + backLeftDy);
+
+      // Back-right face
+      drawImageInParallelogram(backImg,
+        cx + w + backRightDx, cy - backSpreadAmount + backRightDy,
+        cx + backRightDx, cy - h - backSpreadAmount + backRightDy,
+        cx + backRightDx, cy - h - backSpreadAmount + s + backRightDy,
+        cx + w + backRightDx, cy - backSpreadAmount + s + backRightDy);
+    } else {
+      // Fallback: solid fill when image not loaded
+      drawBackFacePath(cx, cy + h + backSpreadAmount, cx + w, cy + 2 * h + backSpreadAmount, cx, cy + 3 * h + backSpreadAmount, cx - w, cy + 2 * h + backSpreadAmount);
+      ctx.fillStyle = BLUE_BACK;
+      ctx.fill();
+      drawBackFacePath(cx - w + backLeftDx, cy - backSpreadAmount + backLeftDy, cx + backLeftDx, cy - h - backSpreadAmount + backLeftDy, cx + backLeftDx, cy - h - backSpreadAmount + s + backLeftDy, cx - w + backLeftDx, cy - backSpreadAmount + s + backLeftDy);
+      ctx.fillStyle = BLUE_BACK;
+      ctx.fill();
+      drawBackFacePath(cx + w + backRightDx, cy - backSpreadAmount + backRightDy, cx + backRightDx, cy - h - backSpreadAmount + backRightDy, cx + backRightDx, cy - h - backSpreadAmount + s + backRightDy, cx + w + backRightDx, cy - backSpreadAmount + s + backRightDy);
+      ctx.fillStyle = BLUE_BACK;
+      ctx.fill();
+    }
   }
 
   /** Draws front faces (left, right, top) – rendered in front of the circle. */
   function drawFrontFaces(geom) {
     const { cx, cy, w, h, s, spreadAmount, leftDx, leftDy, rightDx, rightDy } = geom;
 
-    // Left face
-    ctx.beginPath();
-    ctx.moveTo(cx - w + leftDx, cy + leftDy);
-    ctx.lineTo(cx + leftDx, cy + h + leftDy);
-    ctx.lineTo(cx + leftDx, cy + h + s + leftDy);
-    ctx.lineTo(cx - w + leftDx, cy + s + leftDy);
-    ctx.closePath();
-    ctx.fillStyle = BLUE_LEFT;
-    ctx.fill();
+    // Left face – image only (transparent when not loaded)
+    if (FACE_IMAGES.left.complete && FACE_IMAGES.left.naturalWidth) {
+      drawImageInParallelogram(FACE_IMAGES.left,
+        cx - w + leftDx, cy + leftDy,
+        cx + leftDx, cy + h + leftDy,
+        cx + leftDx, cy + h + s + leftDy,
+        cx - w + leftDx, cy + s + leftDy);
+    }
 
     // Right face
-    ctx.beginPath();
-    ctx.moveTo(cx + w + rightDx, cy + rightDy);
-    ctx.lineTo(cx + rightDx, cy + h + rightDy);
-    ctx.lineTo(cx + rightDx, cy + h + s + rightDy);
-    ctx.lineTo(cx + w + rightDx, cy + s + rightDy);
-    ctx.closePath();
-    ctx.fillStyle = BLUE_RIGHT;
-    ctx.fill();
+    if (FACE_IMAGES.right.complete && FACE_IMAGES.right.naturalWidth) {
+      drawImageInParallelogram(FACE_IMAGES.right,
+        cx + w + rightDx, cy + rightDy,
+        cx + rightDx, cy + h + rightDy,
+        cx + rightDx, cy + h + s + rightDy,
+        cx + w + rightDx, cy + s + rightDy);
+    }
 
     // Top face
-    ctx.beginPath();
-    ctx.moveTo(cx, cy - h - spreadAmount);
-    ctx.lineTo(cx + w, cy - spreadAmount);
-    ctx.lineTo(cx, cy + h - spreadAmount);
-    ctx.lineTo(cx - w, cy - spreadAmount);
-    ctx.closePath();
-    ctx.fillStyle = BLUE_TOP;
-    ctx.fill();
+    if (FACE_IMAGES.top.complete && FACE_IMAGES.top.naturalWidth) {
+      drawImageInParallelogram(FACE_IMAGES.top,
+        cx, cy - h - spreadAmount,
+        cx + w, cy - spreadAmount,
+        cx, cy + h - spreadAmount,
+        cx - w, cy - spreadAmount);
+    }
   }
 
   function draw() {
-    var W = canvas.width;
-    var H = canvas.height;
+    var W = cssWidth;
+    var H = cssHeight;
 
     ctx.fillStyle = BG;
     ctx.fillRect(0, 0, W, H);
