@@ -9,6 +9,21 @@
   const BLUE_RIGHT = '#2d7dd2';  // Lightest – right face (lit)
   const BLUE_TOP = '#2563b8';    // Mid – top face
 
+  let mouseX = null;
+  let mouseY = null;
+
+  canvas.addEventListener('mousemove', function (e) {
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    mouseX = (e.clientX - rect.left) * scaleX - canvas.width / 2;
+    mouseY = (e.clientY - rect.top) * scaleY - canvas.height / 2;
+  });
+  canvas.addEventListener('mouseleave', function () {
+    mouseX = null;
+    mouseY = null;
+  });
+
   // Match canvas size to wrapper
   function resize() {
     canvas.width = canvas.parentElement.offsetWidth;
@@ -21,38 +36,39 @@
   const ISO_X = Math.cos(Math.PI / 6);  // cos(30°) ≈ 0.866
   const ISO_Y = Math.sin(Math.PI / 6);  // sin(30°) ≈ 0.5
 
-  function drawIsometricCube(cx, cy, size) {
+  function drawIsometricCube(cx, cy, size, spread) {
     const s = size;
     const w = s * ISO_X;  // Horizontal extent per unit (cos 30°)
     const h = s * ISO_Y;  // Vertical extent per unit (sin 30°)
+    const spreadAmount = spread || 0;
 
     // Draw order: back faces first so top overlaps correctly
-    // Left face: parallelogram (darker); shares top edge with diamond
+    // Left face: parallelogram (darker); pushed left when spread > 0
     ctx.beginPath();
-    ctx.moveTo(cx - w, cy);
-    ctx.lineTo(cx, cy + h);
-    ctx.lineTo(cx, cy + h + s);
-    ctx.lineTo(cx - w, cy + s);
+    ctx.moveTo(cx - w - spreadAmount, cy);
+    ctx.lineTo(cx - spreadAmount, cy + h);
+    ctx.lineTo(cx - spreadAmount, cy + h + s);
+    ctx.lineTo(cx - w - spreadAmount, cy + s);
     ctx.closePath();
     ctx.fillStyle = BLUE_LEFT;
     ctx.fill();
 
-    // Right face: parallelogram (lighter); shares top edge with diamond
+    // Right face: parallelogram (lighter); pushed right when spread > 0
     ctx.beginPath();
-    ctx.moveTo(cx + w, cy);
-    ctx.lineTo(cx, cy + h);
-    ctx.lineTo(cx, cy + h + s);
-    ctx.lineTo(cx + w, cy + s);
+    ctx.moveTo(cx + w + spreadAmount, cy);
+    ctx.lineTo(cx + spreadAmount, cy + h);
+    ctx.lineTo(cx + spreadAmount, cy + h + s);
+    ctx.lineTo(cx + w + spreadAmount, cy + s);
     ctx.closePath();
     ctx.fillStyle = BLUE_RIGHT;
     ctx.fill();
 
-    // Top face: diamond (4 vertices, centered)
+    // Top face: diamond; pushed up when spread > 0
     ctx.beginPath();
-    ctx.moveTo(cx, cy - h);       // top
-    ctx.lineTo(cx + w, cy);       // right
-    ctx.lineTo(cx, cy + h);       // bottom
-    ctx.lineTo(cx - w, cy);       // left
+    ctx.moveTo(cx, cy - h - spreadAmount);       // top
+    ctx.lineTo(cx + w, cy - spreadAmount);        // right
+    ctx.lineTo(cx, cy + h - spreadAmount);        // bottom
+    ctx.lineTo(cx - w, cy - spreadAmount);       // left
     ctx.closePath();
     ctx.fillStyle = BLUE_TOP;
     ctx.fill();
@@ -79,7 +95,15 @@
     ctx.globalAlpha = 0.8;
     var cubeSize = Math.min(W, H) * 0.3;
     // Offset up so cube's geometric center aligns with origin
-    drawIsometricCube(0, -cubeSize / 2, cubeSize);
+    var spread = 0;
+    if (mouseX !== null && mouseY !== null) {
+      var dist = Math.sqrt(mouseX * mouseX + mouseY * mouseY);
+      var innerRadius = Math.min(W, H) * 0.12;   // Max spread when within this
+      var outerRadius = Math.min(W, H) * 0.28;    // Zero spread when beyond this
+      var t = dist <= innerRadius ? 1 : dist >= outerRadius ? 0 : (outerRadius - dist) / (outerRadius - innerRadius);
+      spread = t * cubeSize * 0.4;
+    }
+    drawIsometricCube(0, -cubeSize / 2, cubeSize, spread);
     ctx.globalAlpha = 1;
 
     ctx.restore();
