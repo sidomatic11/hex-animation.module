@@ -58,24 +58,29 @@
     const w = s * ISO_X;  // Horizontal extent per unit (cos 30°)
     const h = s * ISO_Y;  // Vertical extent per unit (sin 30°)
     const spreadAmount = spread || 0;
+    // Isometric spread: left face along (-ISO_X, +ISO_Y), right face along (+ISO_X, +ISO_Y)
+    const leftDx = -spreadAmount * ISO_X;
+    const leftDy = spreadAmount * ISO_Y;
+    const rightDx = spreadAmount * ISO_X;
+    const rightDy = spreadAmount * ISO_Y;
 
     // Draw order: back faces first so top overlaps correctly
-    // Left face: parallelogram (darker); pushed left when spread > 0
+    // Left face: parallelogram (darker); spreads along isometric left axis
     ctx.beginPath();
-    ctx.moveTo(cx - w - spreadAmount, cy);
-    ctx.lineTo(cx - spreadAmount, cy + h);
-    ctx.lineTo(cx - spreadAmount, cy + h + s);
-    ctx.lineTo(cx - w - spreadAmount, cy + s);
+    ctx.moveTo(cx - w + leftDx, cy + leftDy);
+    ctx.lineTo(cx + leftDx, cy + h + leftDy);
+    ctx.lineTo(cx + leftDx, cy + h + s + leftDy);
+    ctx.lineTo(cx - w + leftDx, cy + s + leftDy);
     ctx.closePath();
     ctx.fillStyle = BLUE_LEFT;
     ctx.fill();
 
-    // Right face: parallelogram (lighter); pushed right when spread > 0
+    // Right face: parallelogram (lighter); spreads along isometric right axis
     ctx.beginPath();
-    ctx.moveTo(cx + w + spreadAmount, cy);
-    ctx.lineTo(cx + spreadAmount, cy + h);
-    ctx.lineTo(cx + spreadAmount, cy + h + s);
-    ctx.lineTo(cx + w + spreadAmount, cy + s);
+    ctx.moveTo(cx + w + rightDx, cy + rightDy);
+    ctx.lineTo(cx + rightDx, cy + h + rightDy);
+    ctx.lineTo(cx + rightDx, cy + h + s + rightDy);
+    ctx.lineTo(cx + w + rightDx, cy + s + rightDy);
     ctx.closePath();
     ctx.fillStyle = BLUE_RIGHT;
     ctx.fill();
