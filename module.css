@@ -1,0 +1,11 @@
+.hex-animation-wrapper {
+  position: relative;
+  width: 100%;
+  overflow: hidden;
+}
+
+.hex-animation-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
