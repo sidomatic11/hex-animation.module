@@ -17,6 +17,19 @@
   FACE_IMAGES.top.src = 'side=top.svg';
   FACE_IMAGES.back.src = 'side=back.svg';
 
+  // Front-face shuffle: pool of 3 images; each face cycles through them and lands on one randomly
+  const FRONT_FACE_POOL = [FACE_IMAGES.left, FACE_IMAGES.right, FACE_IMAGES.top];
+  let frontDisplayIndices = [0, 1, 2];  // which image each face (left, right, top) shows
+  const perfNow = typeof performance !== 'undefined' ? performance.now.bind(performance) : Date.now;
+  let shuffleState = {
+    phase: 'idle',
+    nextShuffleAt: perfNow() + 4000 + Math.random() * 1000,  // first shuffle after 4–6s
+    shuffleStartTime: 0,
+    shuffleDuration: 0,
+    lastCycleTime: 0,
+    cycleIntervalMs: 45
+  };
+
   let mouseX = null;
   let mouseY = null;
   let currentSpread = 0;
@@ -251,13 +264,51 @@
     }
   }
 
+  /** Returns a random permutation of [0, 1, 2] – no two faces get the same image. */
+  function shuffleIndicesNoRepeat() {
+    const arr = [0, 1, 2];
+    for (let i = arr.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+    return arr;
+  }
+
+  /**
+   * Updates front-face shuffle state. At random 2–3s intervals, cycles quickly through images
+   * then randomly lands on one that stays until the next shuffle.
+   */
+  function updateFrontShuffle(now) {
+    const st = shuffleState;
+    if (st.phase === 'idle') {
+      if (now >= st.nextShuffleAt) {
+        st.phase = 'shuffling';
+        st.shuffleStartTime = now;
+        st.shuffleDuration = 800 + Math.random() * 400;  // 0.8–1.2s shuffle
+        st.lastCycleTime = now;
+      }
+    } else {
+      // Shuffling: cycle through permutations (no repeated index per face)
+      if (now - st.lastCycleTime >= st.cycleIntervalMs) {
+        st.lastCycleTime = now;
+        frontDisplayIndices = shuffleIndicesNoRepeat();
+      }
+      if (now - st.shuffleStartTime >= st.shuffleDuration) {
+        frontDisplayIndices = shuffleIndicesNoRepeat();
+        st.phase = 'idle';
+        st.nextShuffleAt = now + 6000 + Math.random() * 4000;  // 6–10s until next shuffle
+      }
+    }
+  }
+
   /** Draws front faces (left, right, top) – rendered in front of the circle. */
   function drawFrontFaces(geom) {
     const { cx, cy, w, h, s, spreadAmount, leftDx, leftDy, rightDx, rightDy } = geom;
 
-    // Left face – image only (transparent when not loaded)
-    if (FACE_IMAGES.left.complete && FACE_IMAGES.left.naturalWidth) {
-      drawImageInParallelogram(FACE_IMAGES.left,
+    // Left face – uses shuffled image from pool
+    const leftImg = FRONT_FACE_POOL[frontDisplayIndices[0]];
+    if (leftImg && leftImg.complete && leftImg.naturalWidth) {
+      drawImageInParallelogram(leftImg,
         cx - w + leftDx, cy + leftDy,
         cx + leftDx, cy + h + leftDy,
         cx + leftDx, cy + h + s + leftDy,
@@ -265,8 +316,9 @@
     }
 
     // Right face
-    if (FACE_IMAGES.right.complete && FACE_IMAGES.right.naturalWidth) {
-      drawImageInParallelogram(FACE_IMAGES.right,
+    const rightImg = FRONT_FACE_POOL[frontDisplayIndices[1]];
+    if (rightImg && rightImg.complete && rightImg.naturalWidth) {
+      drawImageInParallelogram(rightImg,
         cx + w + rightDx, cy + rightDy,
         cx + rightDx, cy + h + rightDy,
         cx + rightDx, cy + h + s + rightDy,
@@ -274,8 +326,9 @@
     }
 
     // Top face
-    if (FACE_IMAGES.top.complete && FACE_IMAGES.top.naturalWidth) {
-      drawImageInParallelogram(FACE_IMAGES.top,
+    const topImg = FRONT_FACE_POOL[frontDisplayIndices[2]];
+    if (topImg && topImg.complete && topImg.naturalWidth) {
+      drawImageInParallelogram(topImg,
         cx, cy - h - spreadAmount,
         cx + w, cy - spreadAmount,
         cx, cy + h - spreadAmount,
@@ -285,6 +338,7 @@
 
   function draw() {
     time += 0.01;
+    updateFrontShuffle(perfNow());
     var W = cssWidth;
     var H = cssHeight;
 
