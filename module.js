@@ -3,22 +3,21 @@
   const ctx = canvas.getContext('2d');
 
   // Config
-  const BG = '#080c24';
-  const ORANGE = '#FF5B26';
-  const BLUE_LEFT = '#1a4d8c';   // Darkest – left face (shadowed)
-  const BLUE_RIGHT = '#2d7dd2';  // Lightest – right face (lit)
-  const BLUE_TOP = '#2563b8';    // Mid – top face
-  const BLUE_BACK = '#1a3a5c';  // Dark blue – back faces (bottom, back-left, back-right)
+  const BG = '#070129';
+  const BLUE_BACK = '#1a3a5c';  // Dark blue – back faces (fallback when image not loaded)
 
-  // Face images (loaded async) – same folder as index.html
-  const FACE_IMAGES = { left: new Image(), right: new Image(), top: new Image(), back: new Image() };
-  FACE_IMAGES.left.src = 'side=left.svg';
-  FACE_IMAGES.right.src = 'side=right.svg';
-  FACE_IMAGES.top.src = 'side=top.svg';
-  FACE_IMAGES.back.src = 'side=back.svg';
+  // Back face image (loaded async) – same folder as index.html
+  const backFaceImage = new Image();
+  backFaceImage.src = 'side=back.svg';
 
-  // Front-face shuffle: pool of 3 images; each face cycles through them and lands on one randomly
-  const FRONT_FACE_POOL = [FACE_IMAGES.left, FACE_IMAGES.right, FACE_IMAGES.top];
+  // Front-face shuffle: pool of 6 images; each face cycles through them and lands on one randomly
+  const FRONT_FACE_POOL = [];
+  for (let i = 1; i <= 6; i++) {
+    const img = new Image();
+    const indexStr = String(i).padStart(2, '0');
+    img.src = indexStr + '.svg';
+    FRONT_FACE_POOL.push(img);
+  }
   let frontDisplayIndices = [0, 1, 2];  // which image each face (left, right, top) shows
   const perfNow = typeof performance !== 'undefined' ? performance.now.bind(performance) : Date.now;
   let shuffleState = {
@@ -218,7 +217,7 @@
   /** Draws back faces (bottom, back-left, back-right) – rendered behind the circle. */
   function drawBackFaces(geom) {
     const { cx, cy, w, h, s, backSpreadAmount, backLeftDx, backLeftDy, backRightDx, backRightDy } = geom;
-    const backImg = FACE_IMAGES.back;
+    const backImg = backFaceImage;
 
     function drawBackFacePath(x0, y0, x1, y1, x2, y2, x3, y3) {
       ctx.beginPath();
@@ -252,26 +251,27 @@
         cx + w + backRightDx, cy - backSpreadAmount + s + backRightDy);
     } else {
       // Fallback: solid fill when image not loaded
-      drawBackFacePath(cx, cy + h + backSpreadAmount, cx + w, cy + 2 * h + backSpreadAmount, cx, cy + 3 * h + backSpreadAmount, cx - w, cy + 2 * h + backSpreadAmount);
       ctx.fillStyle = BLUE_BACK;
+      drawBackFacePath(cx, cy + h + backSpreadAmount, cx + w, cy + 2 * h + backSpreadAmount, cx, cy + 3 * h + backSpreadAmount, cx - w, cy + 2 * h + backSpreadAmount);
       ctx.fill();
       drawBackFacePath(cx - w + backLeftDx, cy - backSpreadAmount + backLeftDy, cx + backLeftDx, cy - h - backSpreadAmount + backLeftDy, cx + backLeftDx, cy - h - backSpreadAmount + s + backLeftDy, cx - w + backLeftDx, cy - backSpreadAmount + s + backLeftDy);
-      ctx.fillStyle = BLUE_BACK;
       ctx.fill();
       drawBackFacePath(cx + w + backRightDx, cy - backSpreadAmount + backRightDy, cx + backRightDx, cy - h - backSpreadAmount + backRightDy, cx + backRightDx, cy - h - backSpreadAmount + s + backRightDy, cx + w + backRightDx, cy - backSpreadAmount + s + backRightDy);
-      ctx.fillStyle = BLUE_BACK;
       ctx.fill();
     }
   }
 
-  /** Returns a random permutation of [0, 1, 2] – no two faces get the same image. */
+  /** Returns 3 unique random indices into FRONT_FACE_POOL – no two faces get the same image. */
   function shuffleIndicesNoRepeat() {
-    const arr = [0, 1, 2];
-    for (let i = arr.length - 1; i > 0; i--) {
+    const n = FRONT_FACE_POOL.length;
+    const indices = [];
+    for (let i = 0; i < n; i++) indices.push(i);
+    for (let i = n - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
-      [arr[i], arr[j]] = [arr[j], arr[i]];
+      [indices[i], indices[j]] = [indices[j], indices[i]];
     }
-    return arr;
+    // Take first 3 shuffled indices so each selected image is unique
+    return indices.slice(0, 3);
   }
 
   /**
