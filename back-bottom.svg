@@ -1,18 +1,3 @@
 <svg width="240" height="240" viewBox="0 0 240 240" fill="none" xmlns="http://www.w3.org/2000/svg">
-<g clip-path="url(#clip0_516_7726)">
-<rect x="221.539" y="-18.46" width="36.9231" height="36.92" fill="#0C92EB"/>
-<rect x="221.539" y="55.3801" width="36.9231" height="184.62" fill="#0C92EB"/>
-<rect y="-18.46" width="36.9231" height="36.92" fill="#0C92EB"/>
-<rect x="73.8457" y="-18.46" width="36.9231" height="36.92" fill="#0C92EB"/>
-<rect x="73.8457" y="203.08" width="166.154" height="36.92" fill="#0C92EB"/>
-<rect x="68.6445" y="129.23" width="115.97" height="36.92" fill="#0C92EB"/>
-<rect x="147.691" y="-18.46" width="36.9231" height="36.92" fill="#0C92EB"/>
-<rect y="55.3801" width="36.9231" height="184.62" fill="#0C92EB"/>
-<rect y="55.3801" width="240" height="36.92" fill="#0C92EB"/>
-</g>
-<defs>
-<clipPath id="clip0_516_7726">
-<rect width="240" height="240" fill="white"/>
-</clipPath>
-</defs>
+<path d="M236 57.5342V236H75.3838V200.311H218.153V93.2236H39.6924V236H4V57.5342H236ZM182.46 164.612H70.3564V128.923H182.46V164.612ZM39.6924 21.8447H4V4H39.6924V21.8447ZM111.076 21.8447H75.3838V4H111.076V21.8447ZM182.46 21.8447H146.769V4H182.46V21.8447ZM236 21.8447H218.154V4H236V21.8447Z" fill="#0C92EB"/>
 </svg>

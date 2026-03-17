@@ -6,9 +6,13 @@
   const BG = '#070129';
   const BLUE_BACK = '#1a3a5c';  // Dark blue – back faces (fallback when image not loaded)
 
-  // Back face image (loaded async) – same folder as index.html
-  const backFaceImage = new Image();
-  backFaceImage.src = 'side=back.svg';
+  // Back face images (loaded async) – same folder as index.html
+  const backBottomImage = new Image();
+  backBottomImage.src = 'back-bottom.svg';
+  const backLeftImage = new Image();
+  backLeftImage.src = 'back-left.svg';
+  const backRightImage = new Image();
+  backRightImage.src = 'back-right.svg';
 
   // Front-face shuffle: pool of 6 images; each face cycles through them and lands on one randomly
   const FRONT_FACE_POOL = [];
@@ -88,6 +92,22 @@
     ctx.rect(0, 0, 1, 1);
     ctx.clip();
     ctx.drawImage(img, 0, 0, img.naturalWidth, img.naturalHeight, 0, 0, 1, 1);
+    ctx.restore();
+  }
+
+  /**
+   * Like drawImageInParallelogram but horizontally flipped within the same parallelogram.
+   */
+  function drawImageInParallelogramFlippedX(img, x0, y0, x1, y1, x2, y2, x3, y3) {
+    if (!img.complete || !img.naturalWidth) return;
+    ctx.save();
+    ctx.translate(x0, y0);
+    // Flip X by negating the first column of the transform and compensating with a translate of +1 in local space.
+    ctx.transform(-(x1 - x0), -(y1 - y0), x3 - x0, y3 - y0, 0, 0);
+    ctx.beginPath();
+    ctx.rect(-1, 0, 1, 1);
+    ctx.clip();
+    ctx.drawImage(img, 0, 0, img.naturalWidth, img.naturalHeight, -1, 0, 1, 1);
     ctx.restore();
   }
 
@@ -217,7 +237,6 @@
   /** Draws back faces (bottom, back-left, back-right) – rendered behind the circle. */
   function drawBackFaces(geom) {
     const { cx, cy, w, h, s, backSpreadAmount, backLeftDx, backLeftDy, backRightDx, backRightDy } = geom;
-    const backImg = backFaceImage;
 
     function drawBackFacePath(x0, y0, x1, y1, x2, y2, x3, y3) {
       ctx.beginPath();
@@ -228,37 +247,91 @@
       ctx.closePath();
     }
 
-    if (backImg.complete && backImg.naturalWidth) {
-      // Bottom face – diamond: top, right, bottom, left (same order as original path)
-      drawImageInParallelogram(backImg,
-        cx, cy + h + backSpreadAmount,
-        cx + w, cy + 2 * h + backSpreadAmount,
-        cx, cy + 3 * h + backSpreadAmount,
-        cx - w, cy + 2 * h + backSpreadAmount);
-
-      // Back-left face
-      drawImageInParallelogram(backImg,
-        cx - w + backLeftDx, cy - backSpreadAmount + backLeftDy,
-        cx + backLeftDx, cy - h - backSpreadAmount + backLeftDy,
-        cx + backLeftDx, cy - h - backSpreadAmount + s + backLeftDy,
-        cx - w + backLeftDx, cy - backSpreadAmount + s + backLeftDy);
-
-      // Back-right face
-      drawImageInParallelogram(backImg,
-        cx + w + backRightDx, cy - backSpreadAmount + backRightDy,
-        cx + backRightDx, cy - h - backSpreadAmount + backRightDy,
-        cx + backRightDx, cy - h - backSpreadAmount + s + backRightDy,
-        cx + w + backRightDx, cy - backSpreadAmount + s + backRightDy);
-    } else {
-      // Fallback: solid fill when image not loaded
+    function drawQuadFill(quad) {
       ctx.fillStyle = BLUE_BACK;
-      drawBackFacePath(cx, cy + h + backSpreadAmount, cx + w, cy + 2 * h + backSpreadAmount, cx, cy + 3 * h + backSpreadAmount, cx - w, cy + 2 * h + backSpreadAmount);
-      ctx.fill();
-      drawBackFacePath(cx - w + backLeftDx, cy - backSpreadAmount + backLeftDy, cx + backLeftDx, cy - h - backSpreadAmount + backLeftDy, cx + backLeftDx, cy - h - backSpreadAmount + s + backLeftDy, cx - w + backLeftDx, cy - backSpreadAmount + s + backLeftDy);
-      ctx.fill();
-      drawBackFacePath(cx + w + backRightDx, cy - backSpreadAmount + backRightDy, cx + backRightDx, cy - h - backSpreadAmount + backRightDy, cx + backRightDx, cy - h - backSpreadAmount + s + backRightDy, cx + w + backRightDx, cy - backSpreadAmount + s + backRightDy);
+      drawBackFacePath(
+        quad[0].x, quad[0].y,
+        quad[1].x, quad[1].y,
+        quad[2].x, quad[2].y,
+        quad[3].x, quad[3].y
+      );
       ctx.fill();
     }
+
+    // If any of the back images are ready, draw all back faces at low opacity (images + fallback fills),
+    // otherwise draw fallback fills at normal opacity. This preserves the previous visual behavior.
+    const hasBottom = backBottomImage.complete && backBottomImage.naturalWidth;
+    const hasLeft = backLeftImage.complete && backLeftImage.naturalWidth;
+    const hasRight = backRightImage.complete && backRightImage.naturalWidth;
+    const hasAny = hasBottom || hasLeft || hasRight;
+
+    // Precompute quad vertices (clockwise).
+    const bottomQuad = [
+      { x: cx, y: cy + h + backSpreadAmount },                 // top
+      { x: cx + w, y: cy + 2 * h + backSpreadAmount },         // right
+      { x: cx, y: cy + 3 * h + backSpreadAmount },             // bottom
+      { x: cx - w, y: cy + 2 * h + backSpreadAmount }          // left
+    ];
+    const backLeftQuad = [
+      { x: cx - w + backLeftDx, y: cy - backSpreadAmount + backLeftDy },
+      { x: cx + backLeftDx, y: cy - h - backSpreadAmount + backLeftDy },
+      { x: cx + backLeftDx, y: cy - h - backSpreadAmount + s + backLeftDy },
+      { x: cx - w + backLeftDx, y: cy - backSpreadAmount + s + backLeftDy }
+    ];
+    const backRightQuad = [
+      { x: cx + w + backRightDx, y: cy - backSpreadAmount + backRightDy },
+      { x: cx + backRightDx, y: cy - h - backSpreadAmount + backRightDy },
+      { x: cx + backRightDx, y: cy - h - backSpreadAmount + s + backRightDy },
+      { x: cx + w + backRightDx, y: cy - backSpreadAmount + s + backRightDy }
+    ];
+
+    if (hasAny) {
+      ctx.save();
+      ctx.globalAlpha = 0.2;
+    }
+
+    // Bottom face (special-case: rotate texture -90° while keeping the same diamond geometry)
+    if (hasBottom) {
+      // Original order (no rotation): top, right, bottom, left
+      // For -90° rotation of the texture, remap as: left, top, right, bottom
+      drawImageInParallelogram(
+        backBottomImage,
+        bottomQuad[3].x, bottomQuad[3].y, // left  -> origin
+        bottomQuad[0].x, bottomQuad[0].y, // top   -> "top-right"
+        bottomQuad[1].x, bottomQuad[1].y, // right -> "bottom-right"
+        bottomQuad[2].x, bottomQuad[2].y  // bottom-> "bottom-left"
+      );
+    } else {
+      drawQuadFill(bottomQuad);
+    }
+
+    // Back-left face
+    if (hasLeft) {
+      drawImageInParallelogram(
+        backLeftImage,
+        backLeftQuad[0].x, backLeftQuad[0].y,
+        backLeftQuad[1].x, backLeftQuad[1].y,
+        backLeftQuad[2].x, backLeftQuad[2].y,
+        backLeftQuad[3].x, backLeftQuad[3].y
+      );
+    } else {
+      drawQuadFill(backLeftQuad);
+    }
+
+    // Back-right face (flipped X)
+    if (hasRight) {
+      drawImageInParallelogramFlippedX(
+        backRightImage,
+        backRightQuad[0].x, backRightQuad[0].y,
+        backRightQuad[1].x, backRightQuad[1].y,
+        backRightQuad[2].x, backRightQuad[2].y,
+        backRightQuad[3].x, backRightQuad[3].y
+      );
+    } else {
+      drawQuadFill(backRightQuad);
+    }
+
+    if (hasAny) ctx.restore();
   }
 
   /** Returns 3 unique random indices into FRONT_FACE_POOL – no two faces get the same image. */
