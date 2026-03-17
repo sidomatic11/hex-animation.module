@@ -39,12 +39,12 @@
   const SMOOTH_SPEED = 0.06;  // Lower = slower (0.04–0.1 typical)
   const BACK_SPREAD_FACTOR = 1.5;  // Back faces spread less than front (0–1)
 
-  // Glass-lava HUD animation state (reference design uses bgRadius 280)
-  // Perf: blur removed (ctx.filter is expensive); 3 rings; 3 blobs
+  // Orb/HUD core animation state (reference design uses bgRadius 280)
+  // Perf: blur removed (ctx.filter is expensive); 3 rings; 3 wisps
   let time = 0;
-  let rings = [];
-  let blobs = [];
-  const RING_CONFIGS = [
+  let hudRings = [];
+  let orbWisps = [];
+  const HUD_RING_CONFIGS = [
     { radius: 60, baseSpeed: 0.003, thickness: 90, dash: [180, 90], color: 'rgba(255, 255, 255, 0.14)' },
     { radius: 105, baseSpeed: -0.002, thickness: 120, dash: [300, 120], color: 'rgba(255, 236, 179, 0.1)' },
     { radius: 205, baseSpeed: -0.0025, thickness: 120, dash: [550, 180], color: 'rgba(255, 255, 255, 0.07)' }
@@ -179,10 +179,10 @@
     ctx.restore();
   };
 
-  function createBlobs() {
-    blobs = [];
+  function initOrbWisps() {
+    orbWisps = [];
     for (let i = 0; i < 3; i++) {
-      blobs.push({
+      orbWisps.push({
         size: 220 + Math.random() * 200,
         angle: Math.random() * Math.PI * 2,
         dist: 40 + Math.random() * 100,
@@ -193,10 +193,10 @@
   }
 
   /**
-   * Draws the lava-lamp gradient circle with animated blobs.
+   * Draws the orb core gradient circle with animated wisps.
    * Clips to bgRadius; center is at (0,0) after translate.
    */
-  function drawLavaLamp(bgRadius) {
+  function drawOrbCore(bgRadius) {
     const scale = bgRadius / 280;
     ctx.save();
     ctx.beginPath();
@@ -210,12 +210,12 @@
     ctx.fillStyle = bgGrad;
     ctx.fill();
 
-    blobs.forEach(function (blob) {
-      blob.angle += blob.speed;
-      const movement = Math.sin(time * 0.5 + blob.phase) * 40 * scale;
-      const bx = Math.cos(blob.angle) * (blob.dist * scale + movement);
-      const by = Math.sin(blob.angle * 0.7) * (blob.dist * scale + movement);
-      const size = blob.size * scale;
+    orbWisps.forEach(function (wisp) {
+      wisp.angle += wisp.speed;
+      const movement = Math.sin(time * 0.5 + wisp.phase) * 40 * scale;
+      const bx = Math.cos(wisp.angle) * (wisp.dist * scale + movement);
+      const by = Math.sin(wisp.angle * 0.7) * (wisp.dist * scale + movement);
+      const size = wisp.size * scale;
       const grad = ctx.createRadialGradient(bx, by, 0, bx, by, size);
       grad.addColorStop(0, 'rgba(255, 236, 179, 0.25)');
       grad.addColorStop(0.7, 'rgba(255, 112, 41, 0)');
@@ -438,17 +438,17 @@
     ctx.globalAlpha = 0.9;
     drawBackFaces(geom);
 
-    // 2. Circle: glass-lava HUD (lava lamp + animated rings)
+    // 2. Circle: orb/HUD core (core gradient + animated rings)
     ctx.globalAlpha = 1;
     var circleR = Math.min(W, H) * 0.18;
-    if (rings.length === 0) {
-      rings = RING_CONFIGS.map(function (c) { return new Ring(c); });
+    if (hudRings.length === 0) {
+      hudRings = HUD_RING_CONFIGS.map(function (c) { return new Ring(c); });
     }
-    if (blobs.length === 0) createBlobs();
+    if (orbWisps.length === 0) initOrbWisps();
 
     var scale = circleR / 280;
-    drawLavaLamp(circleR);
-    rings.forEach(function (ring) {
+    drawOrbCore(circleR);
+    hudRings.forEach(function (ring) {
       ring.update();
       ring.draw(scale);
     });
