@@ -2,11 +2,13 @@
   const canvas = document.getElementById('hex-canvas');
   const ctx = canvas.getContext('2d');
 
+  // TODO: mobile handling
+
   // Config
   const BG = '#070129';
-  const BLUE_BACK = '#1a3a5c';  // Dark blue – back faces (fallback when image not loaded)
+  const BLUE_BACK = '#1a3a5c';
 
-  // Back face images (loaded async) – same folder as index.html
+  // Back face images (loaded async)
   const backBottomImage = new Image();
   backBottomImage.src = 'back-bottom.svg';
   const backLeftImage = new Image();
@@ -14,7 +16,6 @@
   const backRightImage = new Image();
   backRightImage.src = 'back-right.svg';
 
-  // Front-face shuffle: pool of 6 images; each face cycles through them and lands on one randomly
   const FRONT_FACE_POOL = [];
   for (let i = 1; i <= 6; i++) {
     const img = new Image();
@@ -22,25 +23,23 @@
     img.src = indexStr + '.svg';
     FRONT_FACE_POOL.push(img);
   }
-  let frontDisplayIndices = [0, 1, 2];  // which image each face (left, right, top) shows
+  let frontDisplayIndices = [0, 1, 2];
   const perfNow = typeof performance !== 'undefined' ? performance.now.bind(performance) : Date.now;
   let shuffleState = {
     phase: 'idle',
-    nextShuffleAt: perfNow() + 4000 + Math.random() * 1000,  // first shuffle after 4–6s
+    nextShuffleAt: perfNow() + 4000 + Math.random() * 1000,
     shuffleStartTime: 0,
     shuffleDuration: 0,
     lastCycleTime: 0,
-    cycleIntervalMs: 45
+    cycleIntervalMs: 333
   };
 
   let mouseX = null;
   let mouseY = null;
   let currentSpread = 0;
-  const SMOOTH_SPEED = 0.06;  // Lower = slower (0.04–0.1 typical)
-  const BACK_SPREAD_FACTOR = 1.5;  // Back faces spread less than front (0–1)
+  const SMOOTH_SPEED = 0.06;
+  const BACK_SPREAD_FACTOR = 1.5;
 
-  // Orb/HUD core animation state (reference design uses bgRadius 280)
-  // Perf: blur removed (ctx.filter is expensive); 3 rings; 3 wisps
   let time = 0;
   let hudRings = [];
   let orbWisps = [];
@@ -75,9 +74,8 @@
   window.addEventListener('resize', resize);
   resize();
 
-  // Isometric projection: 30° horizontal axes, Y-down screen coords
-  const ISO_X = Math.cos(Math.PI / 6);  // cos(30°) ≈ 0.866
-  const ISO_Y = Math.sin(Math.PI / 6);  // sin(30°) ≈ 0.5
+  const ISO_X = Math.cos(Math.PI / 6);
+  const ISO_Y = Math.sin(Math.PI / 6);
 
   /**
    * Draws an image into a parallelogram with correct skew. Vertices: top-left, top-right, bottom-right, bottom-left.
@@ -102,7 +100,6 @@
     if (!img.complete || !img.naturalWidth) return;
     ctx.save();
     ctx.translate(x0, y0);
-    // Flip X by negating the first column of the transform and compensating with a translate of +1 in local space.
     ctx.transform(-(x1 - x0), -(y1 - y0), x3 - x0, y3 - y0, 0, 0);
     ctx.beginPath();
     ctx.rect(-1, 0, 1, 1);
@@ -111,25 +108,16 @@
     ctx.restore();
   }
 
-  /**
-   * Lerps `current` toward `target` with ease-in-out (slow start & end, faster in middle).
-   * @param {number} current - Current value
-   * @param {number} target - Target value
-   * @param {number} speed - Base lerp speed (0.04–0.1 typical)
-   * @param {number} [maxDelta] - Optional scale for normalizing distance; uses |target| if omitted
-   */
+  /** Lerps `current` toward `target` with ease-in-out. */
   function lerpEaseInOut(current, target, speed, maxDelta) {
     var delta = target - current;
     var range = maxDelta != null ? maxDelta : Math.max(1, Math.abs(target));
     var normalizedDist = Math.min(1, Math.abs(delta) / range);
-    var easeInOut = normalizedDist * (1 - normalizedDist) * 4;  // 0 at ends, 1 at middle
-    return current + delta * speed * (0.85 + easeInOut * 0.15);  // Subtle ease (was 0.5–1.5, now 0.85–1)
+    var easeInOut = normalizedDist * (1 - normalizedDist) * 4;
+    return current + delta * speed * (0.85 + easeInOut * 0.15);
   }
 
-  /**
-   * Computes shared isometric cube geometry (reused by back and front face drawing).
-   * @returns {Object} geom - cx, cy, s, w, h, spreadAmount, and spread deltas for each face
-   */
+  /** Computes shared isometric cube geometry. */
   function computeCubeGeometry(cx, cy, size, spread) {
     const s = size;
     const w = s * ISO_X;
@@ -150,10 +138,7 @@
     };
   }
 
-  /**
-   * Ring for glass-lava HUD: dashed concentric circle with blur and glow.
-   * Values are scaled at draw time to match circle radius.
-   */
+  /** Dashed concentric ring; values scaled at draw time. */
   function Ring(config) {
     this.config = config;
     this.offset = Math.random() * 1000;
@@ -192,10 +177,7 @@
     }
   }
 
-  /**
-   * Draws the orb core gradient circle with animated wisps.
-   * Clips to bgRadius; center is at (0,0) after translate.
-   */
+  /** Draws the orb core gradient with animated wisps. */
   function drawOrbCore(bgRadius) {
     const scale = bgRadius / 280;
     ctx.save();
@@ -258,19 +240,16 @@
       ctx.fill();
     }
 
-    // If any of the back images are ready, draw all back faces at low opacity (images + fallback fills),
-    // otherwise draw fallback fills at normal opacity. This preserves the previous visual behavior.
     const hasBottom = backBottomImage.complete && backBottomImage.naturalWidth;
     const hasLeft = backLeftImage.complete && backLeftImage.naturalWidth;
     const hasRight = backRightImage.complete && backRightImage.naturalWidth;
     const hasAny = hasBottom || hasLeft || hasRight;
 
-    // Precompute quad vertices (clockwise).
     const bottomQuad = [
-      { x: cx, y: cy + h + backSpreadAmount },                 // top
-      { x: cx + w, y: cy + 2 * h + backSpreadAmount },         // right
-      { x: cx, y: cy + 3 * h + backSpreadAmount },             // bottom
-      { x: cx - w, y: cy + 2 * h + backSpreadAmount }          // left
+      { x: cx, y: cy + h + backSpreadAmount },
+      { x: cx + w, y: cy + 2 * h + backSpreadAmount },
+      { x: cx, y: cy + 3 * h + backSpreadAmount },
+      { x: cx - w, y: cy + 2 * h + backSpreadAmount }
     ];
     const backLeftQuad = [
       { x: cx - w + backLeftDx, y: cy - backSpreadAmount + backLeftDy },
@@ -290,16 +269,13 @@
       ctx.globalAlpha = 0.2;
     }
 
-    // Bottom face (special-case: rotate texture -90° while keeping the same diamond geometry)
     if (hasBottom) {
-      // Original order (no rotation): top, right, bottom, left
-      // For -90° rotation of the texture, remap as: left, top, right, bottom
       drawImageInParallelogram(
         backBottomImage,
-        bottomQuad[3].x, bottomQuad[3].y, // left  -> origin
-        bottomQuad[0].x, bottomQuad[0].y, // top   -> "top-right"
-        bottomQuad[1].x, bottomQuad[1].y, // right -> "bottom-right"
-        bottomQuad[2].x, bottomQuad[2].y  // bottom-> "bottom-left"
+        bottomQuad[3].x, bottomQuad[3].y,
+        bottomQuad[0].x, bottomQuad[0].y,
+        bottomQuad[1].x, bottomQuad[1].y,
+        bottomQuad[2].x, bottomQuad[2].y
       );
     } else {
       drawQuadFill(bottomQuad);
@@ -343,7 +319,6 @@
       const j = Math.floor(Math.random() * (i + 1));
       [indices[i], indices[j]] = [indices[j], indices[i]];
     }
-    // Take first 3 shuffled indices so each selected image is unique
     return indices.slice(0, 3);
   }
 
@@ -357,11 +332,10 @@
       if (now >= st.nextShuffleAt) {
         st.phase = 'shuffling';
         st.shuffleStartTime = now;
-        st.shuffleDuration = 800 + Math.random() * 400;  // 0.8–1.2s shuffle
+        st.shuffleDuration = 1600 + Math.random() * 900;  // 1.6–2.5s shuffle
         st.lastCycleTime = now;
       }
     } else {
-      // Shuffling: cycle through permutations (no repeated index per face)
       if (now - st.lastCycleTime >= st.cycleIntervalMs) {
         st.lastCycleTime = now;
         frontDisplayIndices = shuffleIndicesNoRepeat();
@@ -378,7 +352,7 @@
   function drawFrontFaces(geom) {
     const { cx, cy, w, h, s, spreadAmount, leftDx, leftDy, rightDx, rightDy } = geom;
 
-    // Left face – uses shuffled image from pool
+    // Left face
     const leftImg = FRONT_FACE_POOL[frontDisplayIndices[0]];
     if (leftImg && leftImg.complete && leftImg.naturalWidth) {
       drawImageInParallelogram(leftImg,
@@ -434,11 +408,11 @@
 
     var geom = computeCubeGeometry(0, -cubeSize / 2, cubeSize, currentSpread);
 
-    // 1. Back faces (behind circle)
+    // Back faces
     ctx.globalAlpha = 0.9;
     drawBackFaces(geom);
 
-    // 2. Circle: orb/HUD core (core gradient + animated rings)
+    // Orb core and rings
     ctx.globalAlpha = 1;
     var circleR = Math.min(W, H) * 0.18;
     if (hudRings.length === 0) {
@@ -453,7 +427,7 @@
       ring.draw(scale);
     });
 
-    // 3. Front faces (in front of circle)
+    // Front faces
     ctx.globalAlpha = 0.9;
     drawFrontFaces(geom);
     ctx.globalAlpha = 1;
