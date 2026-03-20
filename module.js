@@ -1,5 +1,5 @@
 (function () {
-  const canvas = document.getElementById('hex-canvas');
+  const canvas = document.getElementById('hero-canvas');
   const ctx = canvas.getContext('2d');
 
   // Interaction model:
@@ -12,17 +12,17 @@
 
   // Back face images (loaded async)
   const backBottomImage = new Image();
-  backBottomImage.src = 'back-bottom.svg';
+  backBottomImage.src = 'hero-animation-back-bottom.svg';
   const backLeftImage = new Image();
-  backLeftImage.src = 'back-left.svg';
+  backLeftImage.src = 'hero-animation-back-left.svg';
   const backRightImage = new Image();
-  backRightImage.src = 'back-right.svg';
+  backRightImage.src = 'hero-animation-back-right.svg';
 
   const FRONT_FACE_POOL = [];
   for (let i = 1; i <= 6; i++) {
     const img = new Image();
     const indexStr = String(i).padStart(2, '0');
-    img.src = indexStr + '.svg';
+    img.src = 'hero-animation-front-' + indexStr + '.svg';
     FRONT_FACE_POOL.push(img);
   }
   let frontDisplayIndices = [0, 1, 2];
@@ -54,7 +54,7 @@
   const TOUCH_PULSE_HOLD_MS = 2000;
   const TOUCH_PULSE_RAMP_DOWN_MS = 520;
   // Increase for "more expansion" on touch and hover.
-  const TOUCH_PULSE_MAX_FACTOR = 0.52;   // matches hover's max spread scaling
+  const TOUCH_PULSE_MAX_FACTOR = 0.4;   // matches hover's max spread scaling
   let touchPulseStartAt = null; // perfNow timestamp
   let touchPulseRampUpMs = TOUCH_PULSE_RAMP_UP_MS;
   let touchPulseRampDownMs = TOUCH_PULSE_RAMP_DOWN_MS;

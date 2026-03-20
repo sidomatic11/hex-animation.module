@@ -1,4 +1,4 @@
-.hex-animation-wrapper {
+.hero-animation-wrapper {
   position: relative;
   width: 100%;
   height: 600px;
@@ -6,7 +6,7 @@
   background: #070129;
 }
 
-#hex-canvas {
+#hero-canvas {
   display: block;
   width: 100%;
   height: 100%;
