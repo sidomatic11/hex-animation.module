@@ -2,7 +2,9 @@
   const canvas = document.getElementById('hex-canvas');
   const ctx = canvas.getContext('2d');
 
-  // TODO: mobile handling
+  // Interaction model:
+  // - Desktop/hover devices: mousemove drives cube spread.
+  // - Touch/no-hover devices: no mouse-driven expansion; we run periodic "pulse" expansion.
 
   // Config
   const BG = '#070129';
@@ -25,20 +27,39 @@
   }
   let frontDisplayIndices = [0, 1, 2];
   const perfNow = typeof performance !== 'undefined' ? performance.now.bind(performance) : Date.now;
+  const isHoverCapable = !!(window.matchMedia &&
+    window.matchMedia('(hover: hover) and (pointer: fine)').matches);
   let shuffleState = {
     phase: 'idle',
     nextShuffleAt: perfNow() + 4000 + Math.random() * 1000,
     shuffleStartTime: 0,
     shuffleDuration: 0,
     lastCycleTime: 0,
-    cycleIntervalMs: 333
+    // Higher = fewer image changes per shuffle (slower / calmer).
+    cycleIntervalMs: 400
   };
 
   let mouseX = null;
   let mouseY = null;
   let currentSpread = 0;
-  const SMOOTH_SPEED = 0.06;
+  // Lower = slower cube expansion/contraction response.
+  const SMOOTH_SPEED = 0.035;
   const BACK_SPREAD_FACTOR = 1.5;
+
+  // Touch/no-hover pulse animation (no user input required).
+  const TOUCH_PULSE_INTERVAL_MS = 5600; // regular interval between pulses
+  // Pulse phases: expand -> HOLD at max -> close.
+  // Requirement: hold expanded state for ~1 second before closing.
+  const TOUCH_PULSE_RAMP_UP_MS = 380;
+  const TOUCH_PULSE_HOLD_MS = 2000;
+  const TOUCH_PULSE_RAMP_DOWN_MS = 520;
+  // Increase for "more expansion" on touch and hover.
+  const TOUCH_PULSE_MAX_FACTOR = 0.52;   // matches hover's max spread scaling
+  let touchPulseStartAt = null; // perfNow timestamp
+  let touchPulseRampUpMs = TOUCH_PULSE_RAMP_UP_MS;
+  let touchPulseRampDownMs = TOUCH_PULSE_RAMP_DOWN_MS;
+  let touchPulseDurationMs = TOUCH_PULSE_RAMP_UP_MS + TOUCH_PULSE_HOLD_MS + TOUCH_PULSE_RAMP_DOWN_MS;
+  let nextTouchPulseAt = perfNow() + 1200 + Math.random() * 1200;
 
   let time = 0;
   let hudRings = [];
@@ -49,15 +70,17 @@
     { radius: 205, baseSpeed: -0.0025, thickness: 120, dash: [550, 180], color: 'rgba(255, 255, 255, 0.07)' }
   ];
 
-  canvas.addEventListener('mousemove', function (e) {
-    const rect = canvas.getBoundingClientRect();
-    mouseX = (e.clientX - rect.left) - rect.width / 2;
-    mouseY = (e.clientY - rect.top) - rect.height / 2;
-  });
-  canvas.addEventListener('mouseleave', function () {
-    mouseX = null;
-    mouseY = null;
-  });
+  if (isHoverCapable) {
+    canvas.addEventListener('mousemove', function (e) {
+      const rect = canvas.getBoundingClientRect();
+      mouseX = (e.clientX - rect.left) - rect.width / 2;
+      mouseY = (e.clientY - rect.top) - rect.height / 2;
+    });
+    canvas.addEventListener('mouseleave', function () {
+      mouseX = null;
+      mouseY = null;
+    });
+  }
 
   // Match canvas size to wrapper; scale for high-DPI (Retina) to avoid pixelation
   let cssWidth = 0, cssHeight = 0;
@@ -332,7 +355,8 @@
       if (now >= st.nextShuffleAt) {
         st.phase = 'shuffling';
         st.shuffleStartTime = now;
-        st.shuffleDuration = 1600 + Math.random() * 900;  // 1.6–2.5s shuffle
+        // Duration = 4 cycles so end aligns with cycle boundary (smooth landing).
+        st.shuffleDuration = 5 * st.cycleIntervalMs;
         st.lastCycleTime = now;
       }
     } else {
@@ -341,7 +365,7 @@
         frontDisplayIndices = shuffleIndicesNoRepeat();
       }
       if (now - st.shuffleStartTime >= st.shuffleDuration) {
-        frontDisplayIndices = shuffleIndicesNoRepeat();
+        // Freeze on last cycled set (already unique); no extra shuffle for smooth landing.
         st.phase = 'idle';
         st.nextShuffleAt = now + 6000 + Math.random() * 4000;  // 6–10s until next shuffle
       }
@@ -384,8 +408,10 @@
   }
 
   function draw() {
-    time += 0.01;
-    updateFrontShuffle(perfNow());
+    // Slower temporal progression = calmer ring/orb motion.
+    time += 0.0075;
+    const now = perfNow();
+    updateFrontShuffle(now);
     var W = cssWidth;
     var H = cssHeight;
 
@@ -397,12 +423,51 @@
 
     var cubeSize = Math.min(W, H) * 0.3;
     var targetSpread = 0;
-    if (mouseX !== null && mouseY !== null) {
-      var dist = Math.sqrt(mouseX * mouseX + mouseY * mouseY);
-      var innerRadius = Math.min(W, H) * 0.12;
-      var outerRadius = Math.min(W, H) * 0.28;
-      var t = dist <= innerRadius ? 1 : dist >= outerRadius ? 0 : (outerRadius - dist) / (outerRadius - innerRadius);
-      targetSpread = t * cubeSize * 0.4;
+    if (isHoverCapable) {
+      // Hover devices: spread follows pointer distance from center while pointer is present.
+      if (mouseX !== null && mouseY !== null) {
+        var dist = Math.sqrt(mouseX * mouseX + mouseY * mouseY);
+        var innerRadius = Math.min(W, H) * 0.12;
+        var outerRadius = Math.min(W, H) * 0.28;
+        var t = dist <= innerRadius ? 1 : dist >= outerRadius ? 0 : (outerRadius - dist) / (outerRadius - innerRadius);
+        targetSpread = t * cubeSize * TOUCH_PULSE_MAX_FACTOR;
+      } else {
+        // Pointer not currently over the canvas: relax back to neutral.
+        targetSpread = 0;
+      }
+    } else {
+      // Touch/no-hover devices: run periodic pulses instead of user-controlled hover spread.
+      if (touchPulseStartAt === null && now >= nextTouchPulseAt) {
+        touchPulseStartAt = now;
+        // Add a tiny variation to ramp timings, but keep the HOLD fixed at 1s.
+        const rampVariation = 0.85 + Math.random() * 0.3;
+        touchPulseRampUpMs = TOUCH_PULSE_RAMP_UP_MS * rampVariation;
+        touchPulseRampDownMs = TOUCH_PULSE_RAMP_DOWN_MS * rampVariation;
+        touchPulseDurationMs = touchPulseRampUpMs + TOUCH_PULSE_HOLD_MS + touchPulseRampDownMs;
+      }
+      if (touchPulseStartAt !== null) {
+        var elapsed = now - touchPulseStartAt;
+        if (elapsed >= touchPulseDurationMs) {
+          touchPulseStartAt = null;
+          nextTouchPulseAt = now + TOUCH_PULSE_INTERVAL_MS + Math.random() * 800;
+        } else {
+          // Envelope: expand (0->1), hold (1 for 1s), close (1->0).
+          var envelope = 0;
+          if (elapsed < touchPulseRampUpMs) {
+            var tUp = touchPulseRampUpMs === 0 ? 1 : (elapsed / touchPulseRampUpMs); // 0..1
+            // Ease-out-ish: slow start, faster near the end.
+            envelope = Math.sin((Math.PI / 2) * tUp);
+          } else if (elapsed < touchPulseRampUpMs + TOUCH_PULSE_HOLD_MS) {
+            envelope = 1;
+          } else {
+            var downElapsed = elapsed - (touchPulseRampUpMs + TOUCH_PULSE_HOLD_MS);
+            var tDown = touchPulseRampDownMs === 0 ? 1 : (downElapsed / touchPulseRampDownMs); // 0..1
+            // Ease-out closing: 1 -> 0.
+            envelope = Math.cos((Math.PI / 2) * tDown);
+          }
+          targetSpread = envelope * cubeSize * TOUCH_PULSE_MAX_FACTOR;
+        }
+      }
     }
     currentSpread = lerpEaseInOut(currentSpread, targetSpread, SMOOTH_SPEED, cubeSize * 0.5);
 
